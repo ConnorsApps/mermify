@@ -16,6 +16,12 @@ import {
   getPathMidpoint,
   findClosestElement,
 } from '../utils/svgParser';
+import { detectDiagramType } from '../utils/diagramType';
+import { parseSequenceParticipants, parseSequenceMessages } from '../utils/sequenceParser';
+import { calculateSequenceSvgBounds } from '../utils/sequenceSvgParser';
+import type { SequenceParticipantBounds, SequenceMessageBounds } from '../utils/sequenceSvgParser';
+import { SequenceCanvas } from './sequence/SequenceCanvas';
+import { ListOrdered } from 'lucide-react';
 import { exportSVG, processPNGAction } from '../utils/exportUtils';
 import { PRESETS } from '../constants/presets';
 
@@ -37,6 +43,18 @@ interface PreviewProps {
   onNodeShapeChange?: (nodeId: string, newShapeId: string) => void;
   newNodeIdToEdit?: string | null;
   onClearNewNodeIdToEdit?: () => void;
+
+  // Sequence callbacks
+  onAddParticipant?: (type: string, afterId?: string) => void;
+  onUpdateParticipant?: (id: string, alias: string, type: string) => void;
+  onDeleteParticipant?: (id: string) => void;
+  onReorderParticipants?: (newOrder: string[]) => void;
+  onAddMessage?: (from: string, to: string, arrow: string, label: string, afterLineIndex: number) => void;
+  onUpdateMessage?: (lineIndex: number, label: string, arrow: string) => void;
+  onUpdateMessageConnection?: (lineIndex: number, newFrom: string, newTo: string) => void;
+  onReverseMessage?: (lineIndex: number) => void;
+  onDeleteMessage?: (lineIndex: number) => void;
+  onToggleAutonumber?: () => void;
 }
 
 export interface OverlayNode {
@@ -112,10 +130,26 @@ export function Preview({
   onNodeShapeChange,
   newNodeIdToEdit,
   onClearNewNodeIdToEdit,
+  onAddParticipant,
+  onUpdateParticipant,
+  onDeleteParticipant,
+  onReorderParticipants,
+  onAddMessage,
+  onUpdateMessage,
+  onUpdateMessageConnection,
+  onReverseMessage,
+  onDeleteMessage,
+  onToggleAutonumber,
 }: PreviewProps) {
   const [svgContent, setSvgContent] = useState<string>('');
   const [overlayNodes, setOverlayNodes] = useState<OverlayNode[]>([]);
   const [overlayEdges, setOverlayEdges] = useState<OverlayEdge[]>([]);
+
+  const diagramType = detectDiagramType(code);
+  const isSequence = diagramType === 'sequence';
+
+  const [seqParticipants, setSeqParticipants] = useState<SequenceParticipantBounds[]>([]);
+  const [seqMessages, setSeqMessages] = useState<SequenceMessageBounds[]>([]);
 
   const [editingNodeIdInline, setEditingNodeIdInline] = useState<string | null>(null);
   const [prevActiveNodeId, setPrevActiveNodeId] = useState<string | null>(null);
@@ -397,6 +431,9 @@ export function Preview({
       flowchart: {
         htmlLabels: false,
       },
+      sequence: {
+        mirrorActors: false,
+      },
     });
   }, [theme]);
 
@@ -407,93 +444,110 @@ export function Preview({
     const svgNode = viewport.querySelector('svg');
     if (!svgNode) return;
 
-    const activeRenderId = svgNode.id;
-    const viewportRect = viewport.getBoundingClientRect();
-    const nodeElements = viewport.querySelectorAll('.node');
-    const nodesData: OverlayNode[] = [];
+    if (isSequence) {
+      const parsedParts = parseSequenceParticipants(code);
+      const parsedMsgs = parseSequenceMessages(code);
+      const bounds = calculateSequenceSvgBounds(viewport, parsedParts, parsedMsgs, zoom);
+      
+      setSeqParticipants(bounds.participants);
+      setSeqMessages(bounds.messages);
 
-    // 1. Process Nodes
-    nodeElements.forEach((nodeEl) => {
-      const rect = nodeEl.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
+      // Clean up flowchart overlays
+      setOverlayNodes([]);
+      setOverlayEdges([]);
+    } else {
+      const activeRenderId = svgNode.id;
+      const viewportRect = viewport.getBoundingClientRect();
+      const nodeElements = viewport.querySelectorAll('.node');
+      const nodesData: OverlayNode[] = [];
 
-      const w = rect.width / zoom;
-      const h = rect.height / zoom;
-      const x = (rect.left - viewportRect.left) / zoom;
-      const y = (rect.top - viewportRect.top) / zoom;
+      // 1. Process Nodes
+      nodeElements.forEach((nodeEl) => {
+        const rect = nodeEl.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
 
-      const nodeId = extractNodeId(nodeEl, activeRenderId);
-      const detected = detectNodeShapeAndLabel(code, nodeId);
-      const shapeId = detected ? detected.shapeId : 'rectangle';
+        const w = rect.width / zoom;
+        const h = rect.height / zoom;
+        const x = (rect.left - viewportRect.left) / zoom;
+        const y = (rect.top - viewportRect.top) / zoom;
 
-      nodesData.push({
-        id: nodeId,
-        label: detected ? detected.label : '',
-        x,
-        y,
-        width: w,
-        height: h,
-        shapeId,
+        const nodeId = extractNodeId(nodeEl, activeRenderId);
+        const detected = detectNodeShapeAndLabel(code, nodeId);
+        const shapeId = detected ? detected.shapeId : 'rectangle';
+
+        nodesData.push({
+          id: nodeId,
+          label: detected ? detected.label : '',
+          x,
+          y,
+          width: w,
+          height: h,
+          shapeId,
+        });
       });
-    });
 
-    setOverlayNodes(nodesData);
-    if (onNodesParsed) {
-      onNodesParsed(nodesData);
-    }
-
-    // 2. Process Edges
-    const flowchartLinks = Array.from(viewport.querySelectorAll('.flowchart-link'));
-    const labelElements = Array.from(viewport.querySelectorAll('.edgeLabel')).filter(
-      (el) => el.textContent?.trim() !== ''
-    );
-    const edgesData: OverlayEdge[] = [];
-
-    flowchartLinks.forEach((pathEl) => {
-      const ids = extractEdgeIds(pathEl.id, nodesData);
-      if (!ids) return;
-      const { sourceId, targetId } = ids;
-
-      const pathMid = pathEl instanceof SVGPathElement
-        ? getPathMidpoint(pathEl)
-        : getElementMidpoint(pathEl);
-      const closestLabel = findClosestElement(pathMid, labelElements);
-      const hasLabel = closestLabel.element !== null && closestLabel.distance < 60;
-      const edgeLabel = hasLabel && closestLabel.element ? closestLabel.element.textContent?.trim() || '' : '';
-
-      let x = 0, y = 0, w = 0, h = 0;
-      if (hasLabel && closestLabel.element) {
-        const rect = closestLabel.element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          w = rect.width / zoom;
-          h = rect.height / zoom;
-          x = (rect.left - viewportRect.left) / zoom;
-          y = (rect.top - viewportRect.top) / zoom;
-        }
-      } else {
-        w = 24;
-        h = 24;
-        x = (pathMid.x - viewportRect.left) / zoom - w / 2;
-        y = (pathMid.y - viewportRect.top) / zoom - h / 2;
+      setOverlayNodes(nodesData);
+      if (onNodesParsed) {
+        onNodesParsed(nodesData);
       }
 
-      const currentStyle = detectConnectionStyle(code, sourceId, targetId);
+      // 2. Process Edges
+      const flowchartLinks = Array.from(viewport.querySelectorAll('.flowchart-link'));
+      const labelElements = Array.from(viewport.querySelectorAll('.edgeLabel')).filter(
+        (el) => el.textContent?.trim() !== ''
+      );
+      const edgesData: OverlayEdge[] = [];
 
-      edgesData.push({
-        sourceId,
-        targetId,
-        label: edgeLabel,
-        x,
-        y,
-        width: w,
-        height: h,
-        hasLabel,
-        style: currentStyle,
+      flowchartLinks.forEach((pathEl) => {
+        const ids = extractEdgeIds(pathEl.id, nodesData);
+        if (!ids) return;
+        const { sourceId, targetId } = ids;
+
+        const pathMid = pathEl instanceof SVGPathElement
+          ? getPathMidpoint(pathEl)
+          : getElementMidpoint(pathEl);
+        const closestLabel = findClosestElement(pathMid, labelElements);
+        const hasLabel = closestLabel.element !== null && closestLabel.distance < 60;
+        const edgeLabel = hasLabel && closestLabel.element ? closestLabel.element.textContent?.trim() || '' : '';
+
+        let x = 0, y = 0, w = 0, h = 0;
+        if (hasLabel && closestLabel.element) {
+          const rect = closestLabel.element.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            w = rect.width / zoom;
+            h = rect.height / zoom;
+            x = (rect.left - viewportRect.left) / zoom;
+            y = (rect.top - viewportRect.top) / zoom;
+          }
+        } else {
+          w = 24;
+          h = 24;
+          x = (pathMid.x - viewportRect.left) / zoom - w / 2;
+          y = (pathMid.y - viewportRect.top) / zoom - h / 2;
+        }
+
+        const currentStyle = detectConnectionStyle(code, sourceId, targetId);
+
+        edgesData.push({
+          sourceId,
+          targetId,
+          label: edgeLabel,
+          x,
+          y,
+          width: w,
+          height: h,
+          hasLabel,
+          style: currentStyle,
+        });
       });
-    });
 
-    setOverlayEdges(edgesData);
-  }, [zoom, code, onNodesParsed]);
+      setOverlayEdges(edgesData);
+      
+      // Clean up sequence overlays
+      setSeqParticipants([]);
+      setSeqMessages([]);
+    }
+  }, [zoom, code, onNodesParsed, isSequence]);
 
   // Handle render loop (Runs only on code/theme change)
   useEffect(() => {
@@ -549,8 +603,11 @@ export function Preview({
 
   // Auto-fit diagram to screen on initial render and preset switches
   useEffect(() => {
-    if (svgContent && overlayNodes.length > 0) {
-      const isPreset = code === PRESETS.workflow || code === PRESETS.decision || code === PRESETS.devops;
+    const hasContent = overlayNodes.length > 0 || seqParticipants.length > 0;
+    if (svgContent && hasContent) {
+      const normalize = (s: string) => s.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
+      const normCode = normalize(code);
+      const isPreset = Object.values(PRESETS).some(p => normalize(p) === normCode);
       const shouldFit = !hasFitInitialRef.current || (isPreset && code !== lastFitCodeRef.current);
       
       if (shouldFit) {
@@ -562,7 +619,7 @@ export function Preview({
         return () => clearTimeout(timer);
       }
     }
-  }, [svgContent, overlayNodes.length, code, fitToScreen]);
+  }, [svgContent, overlayNodes.length, seqParticipants.length, code, fitToScreen]);
 
 
   // Recalculate overlays on resize
@@ -643,7 +700,7 @@ export function Preview({
     setEditingEdgeInline(null);
   };
 
-  const hasContent = svgContent && overlayNodes.length > 0;
+  const hasContent = svgContent && (overlayNodes.length > 0 || seqParticipants.length > 0);
 
   return (
     <div className={`flex flex-col h-full border rounded-2xl overflow-hidden shadow-2xl relative select-none transition-all duration-300 ${
@@ -660,10 +717,27 @@ export function Preview({
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors duration-300 ${
             isLight ? 'bg-slate-200/60 text-slate-600' : 'bg-slate-800 text-slate-400'
           }`}>
-            {overlayNodes.length} nodes detected
+            {isSequence
+              ? `${seqParticipants.length} participants, ${seqMessages.length} messages`
+              : `${overlayNodes.length} nodes detected`}
           </span>
         </div>
         <div className="flex items-center space-x-2">
+          {isSequence && onToggleAutonumber && (
+            <button
+              onClick={onToggleAutonumber}
+              className={`p-2 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5 text-xs font-semibold ${
+                isLight
+                  ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Toggle Auto Numbering"
+              data-testid="toggle-autonumber-btn"
+            >
+              <ListOrdered className="w-4 h-4 text-indigo-400" />
+              <span>Autonumber</span>
+            </button>
+          )}
           {svgContent && (
             <ExportDropdown
               copiedShare={copiedShare}
@@ -690,10 +764,10 @@ export function Preview({
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
       >
-        {overlayNodes.length === 0 && !svgContent && (
+        {overlayNodes.length === 0 && seqParticipants.length === 0 && !svgContent && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 text-sm space-y-2">
             <HelpCircle className="w-8 h-8 opacity-45" />
-            <span>Type flowchart code on the left to render</span>
+            <span>Type diagram code on the left to render</span>
           </div>
         )}
 
@@ -720,62 +794,82 @@ export function Preview({
           {/* LAYER B: HTML Interaction overlays */}
           {svgContent && (
             <div className="absolute inset-0 pointer-events-none z-20">
-              {overlayNodes.map((node) => (
-                <NodeOverlay
-                  key={node.id}
-                  node={node}
-                  dragLinkTarget={dragLinkTarget}
-                  onEditNode={onEditNode}
-                  onDeleteNode={onDeleteNode}
-                  onSocketPointerDown={handleSocketPointerDown}
-                  onSocketPointerMove={handleSocketPointerMove}
-                  onSocketPointerUp={handleSocketPointerUp}
+              {isSequence ? (
+                <SequenceCanvas
+                  participants={seqParticipants}
+                  messages={seqMessages}
+                  onAddParticipant={onAddParticipant || (() => {})}
+                  onUpdateParticipant={onUpdateParticipant || (() => {})}
+                  onDeleteParticipant={onDeleteParticipant || (() => {})}
+                  onReorderParticipants={onReorderParticipants || (() => {})}
+                  onAddMessage={onAddMessage || (() => {})}
+                  onUpdateMessage={onUpdateMessage || (() => {})}
+                  onUpdateMessageConnection={onUpdateMessageConnection || (() => {})}
+                  onReverseMessage={onReverseMessage || (() => {})}
+                  onDeleteMessage={onDeleteMessage || (() => {})}
                   isLight={isLight}
-                  activeNode={activeNode}
-                  editingNodeIdInline={editingNodeIdInline}
-                  setEditingNodeIdInline={setEditingNodeIdInline}
-                  onNodeLabelChange={onNodeLabelChange}
-                  onNodeShapeChange={onNodeShapeChange}
                   zoom={zoom}
                 />
-              ))}
+              ) : (
+                <>
+                  {overlayNodes.map((node) => (
+                    <NodeOverlay
+                      key={node.id}
+                      node={node}
+                      dragLinkTarget={dragLinkTarget}
+                      onEditNode={onEditNode}
+                      onDeleteNode={onDeleteNode}
+                      onSocketPointerDown={handleSocketPointerDown}
+                      onSocketPointerMove={handleSocketPointerMove}
+                      onSocketPointerUp={handleSocketPointerUp}
+                      isLight={isLight}
+                      activeNode={activeNode}
+                      editingNodeIdInline={editingNodeIdInline}
+                      setEditingNodeIdInline={setEditingNodeIdInline}
+                      onNodeLabelChange={onNodeLabelChange}
+                      onNodeShapeChange={onNodeShapeChange}
+                      zoom={zoom}
+                    />
+                  ))}
 
-              {dragLinkSource && dragLinkCurrent && dragLinkTarget === '__new_node__' && (
-                <NewNodePlaceholder
-                  x={dragLinkCurrent.x}
-                  y={dragLinkCurrent.y}
-                  isTargeted={true}
-                  isLight={isLight}
-                />
-              )}
+                  {dragLinkSource && dragLinkCurrent && dragLinkTarget === '__new_node__' && (
+                    <NewNodePlaceholder
+                      x={dragLinkCurrent.x}
+                      y={dragLinkCurrent.y}
+                      isTargeted={true}
+                      isLight={isLight}
+                    />
+                  )}
 
-              {overlayEdges.map((edge, idx) => (
-                <EdgeOverlay
-                  key={`edge-${edge.sourceId}-${edge.targetId}-${idx}`}
-                  edge={edge}
-                  isHovered={hoveredEdgeKey === `${edge.sourceId}->${edge.targetId}`}
-                  onMouseEnterEdge={handleMouseEnterEdge}
-                  onMouseLeaveEdge={handleMouseLeaveEdge}
-                  onDeleteEdge={onDeleteEdge}
-                  showGuides={showGuides}
-                  isLight={isLight}
-                  activeEdge={activeEdge}
-                  editingEdgeInline={editingEdgeInline}
-                  setEditingEdgeInline={setEditingEdgeInline}
-                  onEdgeClick={handleEdgeClick}
-                  onEdgeDoubleClick={handleEdgeDoubleClick}
-                  onEdgeLabelChange={onEdgeLabelChange}
-                  onEdgeStyleChange={onEdgeStyleChange}
-                  zoom={zoom}
-                />
-              ))}
+                  {overlayEdges.map((edge, idx) => (
+                    <EdgeOverlay
+                      key={`edge-${edge.sourceId}-${edge.targetId}-${idx}`}
+                      edge={edge}
+                      isHovered={hoveredEdgeKey === `${edge.sourceId}->${edge.targetId}`}
+                      onMouseEnterEdge={handleMouseEnterEdge}
+                      onMouseLeaveEdge={handleMouseLeaveEdge}
+                      onDeleteEdge={onDeleteEdge}
+                      showGuides={showGuides}
+                      isLight={isLight}
+                      activeEdge={activeEdge}
+                      editingEdgeInline={editingEdgeInline}
+                      setEditingEdgeInline={setEditingEdgeInline}
+                      onEdgeClick={handleEdgeClick}
+                      onEdgeDoubleClick={handleEdgeDoubleClick}
+                      onEdgeLabelChange={onEdgeLabelChange}
+                      onEdgeStyleChange={onEdgeStyleChange}
+                      zoom={zoom}
+                    />
+                  ))}
 
-              {dragLinkSource && dragLinkCurrent && (
-                <DragConnectionLine
-                  sourceNode={overlayNodes.find((n) => n.id === dragLinkSource)!}
-                  dragLinkCurrent={dragLinkCurrent}
-                  dragLinkTarget={dragLinkTarget}
-                />
+                  {dragLinkSource && dragLinkCurrent && (
+                    <DragConnectionLine
+                      sourceNode={overlayNodes.find((n) => n.id === dragLinkSource)!}
+                      dragLinkCurrent={dragLinkCurrent}
+                      dragLinkTarget={dragLinkTarget}
+                    />
+                  )}
+                </>
               )}
             </div>
           )}
@@ -783,22 +877,42 @@ export function Preview({
       </div>
 
       {/* Floating Add Node Utility Control */}
-      <div className={`absolute bottom-6 left-6 flex items-center p-1 border rounded-xl shadow-2xl backdrop-blur z-30 transition-colors duration-300 ${
-        isLight ? 'bg-white/90 border-slate-200/80' : 'bg-slate-900/90 border-slate-800/80'
-      }`}>
-        <button
-          onClick={onAddNodeClick}
-          className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg transition-all cursor-pointer pointer-events-auto active:scale-95 text-xs font-semibold ${
-            isLight
-              ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-          }`}
-          title="Add Standalone Node"
-        >
-          <Plus className="w-4 h-4 text-indigo-400" />
-          <span>Add Node</span>
-        </button>
-      </div>
+      {!isSequence ? (
+        <div className={`absolute bottom-6 left-6 flex items-center p-1 border rounded-xl shadow-2xl backdrop-blur z-30 transition-colors duration-300 ${
+          isLight ? 'bg-white/90 border-slate-200/80' : 'bg-slate-900/90 border-slate-800/80'
+        }`}>
+          <button
+            onClick={onAddNodeClick}
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg transition-all cursor-pointer pointer-events-auto active:scale-95 text-xs font-semibold ${
+              isLight
+                ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+            }`}
+            title="Add Standalone Node"
+          >
+            <Plus className="w-4 h-4 text-indigo-400" />
+            <span>Add Node</span>
+          </button>
+        </div>
+      ) : (
+        <div className={`absolute bottom-6 left-6 flex items-center p-1 border rounded-xl shadow-2xl backdrop-blur z-30 transition-colors duration-300 ${
+          isLight ? 'bg-white/90 border-slate-200/80' : 'bg-slate-900/90 border-slate-800/80'
+        }`}>
+          <button
+            onClick={() => onAddParticipant?.('participant')}
+            className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg transition-all cursor-pointer pointer-events-auto active:scale-95 text-xs font-semibold ${
+              isLight
+                ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+            }`}
+            title="Add New Participant"
+            data-testid="add-participant-btn"
+          >
+            <Plus className="w-4 h-4 text-indigo-400" />
+            <span>Add Participant</span>
+          </button>
+        </div>
+      )}
 
       {/* Floating Zoom & Pan Controls */}
       {hasContent && (

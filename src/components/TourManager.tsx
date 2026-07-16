@@ -1,89 +1,85 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { DragConnectAnimation, ClickEditAnimation, DragSpawnAnimation } from './TourAnimations';
 
-interface StepConfig {
-  title: string;
-  description: string;
-  targetSelector?: string; // Empty means centered modal (no target)
-  position?: 'top' | 'bottom' | 'left' | 'right' | 'center';
-  animation?: React.ReactNode;
-}
+import {
+  CURRENT_TOUR_VERSION,
+  FULL_TOUR_STEPS,
+  UPDATE_TOURS
+} from '../constants/tourSteps';
+import type { StepConfig } from '../constants/tourSteps';
 
 interface TourManagerProps {
   theme?: 'light' | 'dark';
 }
 
-const STEPS: StepConfig[] = [
-  {
-    title: 'Welcome to Mermify! 🚀',
-    description: 'Mermify is a premium hybrid editor that combines real-time Mermaid markdown code editing with direct, visual interaction on the diagram. Let’s take a quick 1-minute tour to see how it works!',
-    position: 'center',
-  },
-  {
-    title: 'Hybrid Code Editor ✍️',
-    description: 'Write, edit, or copy Mermaid flowchart markdown here. The diagram on the right updates instantly as you type. If you make a syntax mistake, the built-in validator will guide you.',
-    targetSelector: '[data-testid="editor-pane"]',
-    position: 'right',
-  },
-  {
-    title: 'Interactive Preview Canvas 🎨',
-    description: 'Interact with the rendered diagram. You can click and drag to pan the canvas, or use the mouse wheel to zoom in and out. Press the "Fit" button to center your diagram.',
-    targetSelector: '[data-testid="preview-pane"]',
-    position: 'left',
-  },
-  {
-    title: 'Drag to Connect Nodes 🔗',
-    description: 'Hover over any node and drag the green socket at the bottom. Drop it onto another node to quickly link them together with a connection arrow.',
-    targetSelector: '[data-testid="preview-pane"]',
-    position: 'left',
-    animation: <DragConnectAnimation />,
-  },
-  {
-    title: 'Drag to Spawn New Nodes 🌿',
-    description: 'Need to expand your flow? Drag the green socket from any node into empty canvas space and release. A new connected node will instantly spawn and open for editing!',
-    targetSelector: '[data-testid="preview-pane"]',
-    position: 'left',
-    animation: <DragSpawnAnimation />,
-  },
-  {
-    title: 'Double-Click or Click to Edit ✏️',
-    description: 'Double-click any node or connection line to open the inline editor to rename it. A simple click opens the command palette to customize its shape/style, change arrows, or delete elements.',
-    targetSelector: '[data-testid="preview-pane"]',
-    position: 'left',
-    animation: <ClickEditAnimation />,
-  },
-  {
-    title: 'Export & Share 📤',
-    description: 'Download your diagram as a high-quality SVG or PNG, copy the PNG image directly to your clipboard, or copy a compressed shareable URL to share your live workspace state.',
-    targetSelector: '[data-testid="export-share-container"]',
-    position: 'left',
-  },
-];
+function isVersionLessThan(a: string, b: string): boolean {
+  const partsA = a.split('.').map(Number);
+  const partsB = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const valA = partsA[i] || 0;
+    const valB = partsB[i] || 0;
+    if (valA < valB) return true;
+    if (valA > valB) return false;
+  }
+  return false;
+}
 
 export function TourManager({ theme = 'dark' }: TourManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [tourSteps, setTourSteps] = useState<StepConfig[]>(FULL_TOUR_STEPS);
   const [currentStep, setCurrentStep] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const resizeTimeoutRef = useRef<number | null>(null);
 
   // Initialize and check localStorage
   useEffect(() => {
-    const isCompleted = localStorage.getItem('mermify-tour-completed');
-    let frameId: number;
-    if (!isCompleted) {
-      frameId = window.requestAnimationFrame(() => {
-        setIsOpen(true);
-      });
+    const legacyCompleted = localStorage.getItem('mermify-tour-completed');
+    const savedVersion = localStorage.getItem('mermify-tour-version');
+    
+    let versionToCompare = savedVersion;
+    if (!savedVersion && legacyCompleted === 'true') {
+      versionToCompare = '0.2.0';
     }
 
-    // Custom event listener so header button can relaunch tour
-    const handleRelaunch = () => {
+    // Custom event listener so header button can relaunch specific tour
+    const handleRelaunch = (e: Event) => {
+      const customEvent = e as CustomEvent<{ type?: string }>;
+      const type = customEvent.detail?.type || 'full';
+      
+      if (type === 'full') {
+        setTourSteps(FULL_TOUR_STEPS);
+      } else {
+        const updateTour = UPDATE_TOURS.find(ut => ut.version === type);
+        if (updateTour) {
+          setTourSteps(updateTour.steps);
+        } else {
+          // Fallback to latest update tour if version not found
+          const latestUpdate = UPDATE_TOURS[UPDATE_TOURS.length - 1];
+          setTourSteps(latestUpdate.steps);
+        }
+      }
       setCurrentStep(0);
       setIsOpen(true);
     };
 
     window.addEventListener('mermify-relaunch-tour', handleRelaunch);
+
+    let frameId: number;
+    if (!versionToCompare) {
+      frameId = window.requestAnimationFrame(() => {
+        setTourSteps(FULL_TOUR_STEPS);
+        setCurrentStep(0);
+        setIsOpen(true);
+      });
+    } else if (isVersionLessThan(versionToCompare, CURRENT_TOUR_VERSION)) {
+      const latestUpdate = UPDATE_TOURS[UPDATE_TOURS.length - 1];
+      frameId = window.requestAnimationFrame(() => {
+        setTourSteps(latestUpdate.steps);
+        setCurrentStep(0);
+        setIsOpen(true);
+      });
+    }
+
     return () => {
       window.removeEventListener('mermify-relaunch-tour', handleRelaunch);
       if (frameId) {
@@ -94,7 +90,7 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
 
   const updateTargetBounds = useCallback(() => {
     if (!isOpen) return;
-    const selector = STEPS[currentStep]?.targetSelector;
+    const selector = tourSteps[currentStep]?.targetSelector;
     if (!selector) {
       setTargetRect(null);
       return;
@@ -109,7 +105,7 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
     } else {
       setTargetRect(null);
     }
-  }, [isOpen, currentStep]);
+  }, [isOpen, currentStep, tourSteps]);
 
   // Update target element location when step changes, window resizes, or layout shifts
   useEffect(() => {
@@ -147,10 +143,10 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
 
   if (!isOpen) return null;
 
-  const currentStepData = STEPS[currentStep];
+  const currentStepData = tourSteps[currentStep];
 
   const handleNext = () => {
-    if (currentStep < STEPS.length - 1) {
+    if (currentStep < tourSteps.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
       handleClose();
@@ -165,6 +161,7 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
 
   const handleClose = () => {
     localStorage.setItem('mermify-tour-completed', 'true');
+    localStorage.setItem('mermify-tour-version', CURRENT_TOUR_VERSION);
     setIsOpen(false);
   };
 
@@ -308,7 +305,7 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
         {/* Action buttons & indicator footer */}
         <div className="flex items-center justify-between mt-2 pt-4 border-t border-slate-800/40">
           <span className={`text-[10px] font-bold font-mono ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-            Step {currentStep + 1} of {STEPS.length}
+            Step {currentStep + 1} of {tourSteps.length}
           </span>
           <div className="flex items-center space-x-2">
             {currentStep > 0 ? (
@@ -340,8 +337,8 @@ export function TourManager({ theme = 'dark' }: TourManagerProps) {
               onClick={handleNext}
               className="flex items-center space-x-1 px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg active:scale-95 transition-all cursor-pointer"
             >
-              <span>{currentStep === STEPS.length - 1 ? 'Finish' : 'Next'}</span>
-              {currentStep < STEPS.length - 1 && <ChevronRight className="w-3.5 h-3.5" />}
+              <span>{currentStep === tourSteps.length - 1 ? 'Finish' : 'Next'}</span>
+              {currentStep < tourSteps.length - 1 && <ChevronRight className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>

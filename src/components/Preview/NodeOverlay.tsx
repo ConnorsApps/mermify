@@ -2,6 +2,8 @@ import { memo, useState, useEffect, useRef } from 'react';
 import { Trash2, Shapes, Plus } from 'lucide-react';
 import type { OverlayNode } from '../Preview';
 import { NODE_SHAPES } from '../../utils/mermaidParser';
+import { TypePickerPopover } from './TypePickerPopover';
+import type { TypePickerItem } from './TypePickerPopover';
 
 interface NodeOverlayProps {
   node: OverlayNode;
@@ -96,6 +98,12 @@ function ShapePreview({ id }: { id: string }) {
       return null;
   }
 }
+
+const shapeItems: TypePickerItem[] = NODE_SHAPES.map((shape) => ({
+  id: shape.id,
+  name: shape.name,
+  renderPreview: () => <ShapePreview id={shape.id} />,
+}));
 
 /**
  * Interactive HTML overlay aligned over a rendered SVG node.
@@ -307,44 +315,13 @@ export const NodeOverlay = memo(function NodeOverlay({
 
           {/* 4. Shape Selection Popover Panel */}
           {showShapePopover && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className={`absolute top-[calc(100%+8px)] flex flex-col w-56 p-2 rounded-xl border shadow-2xl backdrop-blur-md z-[60] overlay-interactive animate-in fade-in slide-in-from-top-2 ${
-                isLight
-                  ? 'bg-white/95 border-slate-200'
-                  : 'bg-slate-900/95 border-slate-800'
-              }`}
-            >
-              <div className={`text-[10px] font-bold tracking-wider uppercase mb-1.5 px-1.5 ${
-                isLight ? 'text-slate-400' : 'text-slate-500'
-              }`}>
-                Available Shapes
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                {NODE_SHAPES.map((shape) => {
-                  const isCurrentShape = node.shapeId === shape.id;
-                  return (
-                    <button
-                      key={shape.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleShapeSelect(shape.id);
-                      }}
-                      title={shape.name}
-                      className={`flex items-center justify-center p-1 rounded-lg border transition-all cursor-pointer h-9 ${
-                        isCurrentShape
-                          ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.2)]'
-                          : isLight
-                          ? 'bg-slate-50 border-slate-105 text-slate-500 hover:border-slate-350 hover:text-slate-800'
-                          : 'bg-slate-950/40 border-slate-800/60 text-slate-450 hover:border-slate-700/60 hover:text-slate-200'
-                      }`}
-                    >
-                      <ShapePreview id={shape.id} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <TypePickerPopover
+              title="Available Shapes"
+              items={shapeItems}
+              currentId={node.shapeId}
+              onSelect={handleShapeSelect}
+              isLight={isLight}
+            />
           )}
         </div>
       )}

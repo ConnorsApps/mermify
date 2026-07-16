@@ -26,6 +26,7 @@ test.describe('Advanced Mermify Editor Interactions', () => {
     // Prevent tour onboarding from auto-starting in tests
     await page.addInitScript(() => {
       window.localStorage.setItem('mermify-tour-completed', 'true');
+      window.localStorage.setItem('mermify-tour-version', '0.3.0');
     });
     await page.goto('/');
     await expect(page.locator('.monaco-editor .view-lines')).toBeVisible({ timeout: 15000 });

@@ -85,3 +85,46 @@ Click the **Export** dropdown button in the preview header to access the export 
 - **Download SVG**: Save the vector graphic SVG file.
 
 ![Export Options](/screenshots/export-options.png)
+
+---
+
+## 7. Sequence Diagrams
+
+Mermify supports editing **Sequence Diagrams** interactively alongside standard flowcharts:
+
+![Mermify Sequence Diagram Workspace](/screenshots/sequence-preset.png)
+
+- **Participant Reordering**: Click and drag participant boxes at the top of the canvas to reorder them. The editor will automatically reorder the participant declarations in the Mermaid code.
+- **Participant Properties**: Click any participant to open properties, or double-click to quickly rename it inline.
+- **Message Editing**: Click any message connection line to customize its arrow style or delete it, or double-click to rename the message label inline.
+- **Interactive Message Rerouting**: Drag the message connection socket handles to change the sender or receiver, or drag them up/down to reorder messages.
+- **Autonumbering**: Use the **Autonumber** toggle button in the preview header to quickly show or hide message sequence numbers.
+
+---
+
+## 8. Limitations & Unsupported Features
+
+While Mermify aims to support a wide range of Mermaid diagrams, certain advanced syntaxes will bypass or break the visual interactive editor layer:
+
+### Sequence Diagram Activations
+Explicit activation and deactivation declarations are currently **not supported** in the interactive visual editor. Using them will break the visual overlay synchronization.
+
+Avoid declarations like:
+```mermaid
+sequenceDiagram
+    Alice->>John: Hello John, how are you?
+    activate John
+    John-->>Alice: Great!
+    deactivate John
+```
+
+Similarly, the shortcut +/- suffix notation on message arrows is also not supported:
+```mermaid
+sequenceDiagram
+    Alice->>+John: Hello John
+    John-->>-Alice: Great!
+```
+
+> [!WARNING]
+> If you write these unsupported elements in the code editor, they will render correctly in the SVG preview, but the visual interaction overlay (dragging, double-clicking, reordering) will be disabled or misaligned.
+

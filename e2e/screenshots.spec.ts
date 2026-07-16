@@ -26,6 +26,7 @@ test.describe('Generate Screenshots for Documentation', () => {
     // Prevent tour onboarding from auto-starting in screenshots capture
     await page.addInitScript(() => {
       window.localStorage.setItem('mermify-tour-completed', 'true');
+      window.localStorage.setItem('mermify-tour-version', '0.3.0');
     });
 
     // Navigate to local dev server
@@ -139,5 +140,42 @@ test.describe('Generate Screenshots for Documentation', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500); // Wait for resize and auto-fit to settle
     await page.screenshot({ path: path.join(pwaScreenshotsDir, 'mobile.png') });
+  });
+
+  test('capture sequence diagram screenshot', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // Set completed tour so it doesn't pop up
+    await page.addInitScript(() => {
+      window.localStorage.setItem('mermify-tour-completed', 'true');
+      window.localStorage.setItem('mermify-tour-version', '0.3.0');
+    });
+
+    await page.goto('/');
+    await expect(page.locator('.monaco-editor .view-lines')).toBeVisible({ timeout: 15000 });
+
+    // Dispatch tour relaunch event to automatically trigger sequence preset loading
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('mermify-relaunch-tour', { detail: { type: '0.3.0' } }));
+    });
+
+    // Wait for the sequence diagram to load in Monaco Editor
+    await expect.poll(async () => {
+      return await page.evaluate(() => {
+        return (window as any).monaco?.editor?.getModels()?.[0]?.getValue() || '';
+      });
+    }).toContain('sequenceDiagram');
+
+    // Dismiss the tour popover so the diagram is clearly visible
+    const skipBtn = page.getByRole('button', { name: 'Skip Tour' });
+    if (await skipBtn.isVisible()) {
+      await skipBtn.click();
+    }
+
+    // Wait for the diagram preview SVG to render
+    await page.waitForTimeout(1000);
+
+    // Save screenshot
+    await page.screenshot({ path: path.join(screenshotsDir, 'sequence-preset.png') });
   });
 });

@@ -1,7 +1,8 @@
 # Mermify 🎨🔄
 
-**Mermify** is a premium, visual text-to-diagram hybrid editor for [Mermaid.js](https://mermaid.js.org/) flowcharts. It bridges the gap between text-based diagramming and visual drag-and-drop editors, providing real-time, bi-directional synchronization.
+**Mermify** is a premium, visual text-to-diagram hybrid editor for [Mermaid.js](https://mermaid.js.org/) flowcharts and sequence diagrams. It bridges the gap between text-based diagramming and visual drag-and-drop editors, providing real-time, bi-directional synchronization.
 
+[![Version](https://img.shields.io/badge/Version-v0.3.0-blue)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Bun Version](https://img.shields.io/badge/Runtime-Bun-black?style=flat&logo=bun)](https://bun.sh)
 [![Vite](https://img.shields.io/badge/Build%20Tool-Vite-646CFF?style=flat&logo=vite)](https://vite.dev)
@@ -35,10 +36,12 @@
 
 ## ✨ Features
 
-*   **🔄 Bi-Directional Real-Time Sync:** Edit the raw Mermaid code in a fully featured Monaco Editor, or drag nodes and connect edges visually in the live preview canvas. Changes sync instantly both ways.
-*   **🖱️ Visual Drag-to-Create:** Drag from the socket indicator on any node to an empty canvas area to instantly spawn a new connected node. Or connect existing nodes by dragging from socket to socket.
+*   **🔄 Bi-Directional Real-Time Sync:** Edit raw Mermaid code in a fully featured Monaco Editor, or edit visually in the live preview canvas. Changes sync instantly both ways for both flowcharts and sequence diagrams.
+*   **⚡ Visual Sequence Diagram Editor:** Edit sequence diagrams visually! Add/reorder participants and messages, and customize message types (solid, dotted, arrows) through interactive canvas overlays.
+*   **🖱️ Visual Flowchart Editor:** Drag from the socket indicator on any node to an empty canvas area to instantly spawn a new connected node, or connect existing nodes by dragging from socket to socket.
 *   **🔮 Premium Glassmorphism UI:** Built with a stunning modern glassmorphic interface, dark mode support, customized overlay controls, smooth transitions, and custom scrollbars.
 *   **📋 Property Editors:** Click any node or edge in the visual preview to customize labels, change shapes (choose from 11 custom Mermaid shapes), or alter line styles (solid, dotted, bold, etc.) through modern modal dialogs.
+*   **🎛️ Diagram Presets:** Instantly toggle between flowchart templates and sequence diagram setups in the header to start building faster.
 *   **📤 High-Quality Exports:** Export your diagrams to SVG, download them as PNG, copy PNG directly to your clipboard, or copy a compressed shareable state link.
 
 ---

@@ -10,13 +10,16 @@ interface EditorProps {
   error: string | null;
   onReset: () => void;
   theme?: 'light' | 'dark';
+  onMount?: () => void;
 }
 
-export function Editor({ code, onChange, error, onReset, theme = 'dark' }: EditorProps) {
+export function Editor({ code, onChange, error, onReset, theme = 'dark', onMount }: EditorProps) {
   const [copied, setCopied] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const sentValuesRef = useRef<Set<string>>(new Set());
   const isProgrammaticUpdateRef = useRef(false);
+  const isFirstChangeRef = useRef(true);
+  const initialCodeRef = useRef(code);
 
   // Sync external changes (presets, modal edits, etc.) to the editor
   useEffect(() => {
@@ -51,6 +54,15 @@ export function Editor({ code, onChange, error, onReset, theme = 'dark' }: Edito
     if (isProgrammaticUpdateRef.current) return;
 
     const value = val || '';
+
+    // Ignore the very first change event from Monaco if it matches the initial code, which is a spurious event fired on mount
+    if (isFirstChangeRef.current) {
+      isFirstChangeRef.current = false;
+      if (value === initialCodeRef.current) {
+        return;
+      }
+    }
+
     if (sentValuesRef.current.size > 100) {
       sentValuesRef.current.clear();
     }
@@ -66,6 +78,7 @@ export function Editor({ code, onChange, error, onReset, theme = 'dark' }: Edito
       editor.setValue(code);
       isProgrammaticUpdateRef.current = false;
     }
+    onMount?.();
   };
 
   return (

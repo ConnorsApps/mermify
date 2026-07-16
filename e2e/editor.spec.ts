@@ -5,6 +5,7 @@ test.describe('Mermify Diagram Hybrid Editor', () => {
     // Prevent tour onboarding from auto-starting in editor tests
     await page.addInitScript(() => {
       window.localStorage.setItem('mermify-tour-completed', 'true');
+      window.localStorage.setItem('mermify-tour-version', '0.3.0');
     });
     // Navigate to the base URL
     await page.goto('/');
@@ -27,13 +28,17 @@ test.describe('Mermify Diagram Hybrid Editor', () => {
   });
 
   test('should switch presets correctly', async ({ page }) => {
+    // Open Flowchart templates dropdown
+    await page.getByRole('button', { name: 'Select Flowchart Template' }).click();
     // Switch to Decision Tree preset
-    const decisionBtn = page.getByRole('button', { name: 'Decision Tree' });
+    const decisionBtn = page.getByRole('button', { name: 'Decision Tree' }).first();
     await decisionBtn.click();
     await expect(page.locator('span:has-text("nodes detected")')).toContainText('8 nodes detected');
 
+    // Open Flowchart templates dropdown
+    await page.getByRole('button', { name: 'Select Flowchart Template' }).click();
     // Switch to DevOps Stack preset
-    const devopsBtn = page.getByRole('button', { name: 'DevOps Stack' });
+    const devopsBtn = page.getByRole('button', { name: 'DevOps Stack' }).first();
     await devopsBtn.click();
     await expect(page.locator('span:has-text("nodes detected")')).toContainText('7 nodes detected');
   });
