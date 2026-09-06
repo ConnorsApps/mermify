@@ -4,10 +4,10 @@ description: A Helm chart for Mermify, a visual text-to-diagram hybrid editor fo
 type: application
 version: 0.1.0
 appVersion: "0.3.0"
-home: https://tra-sco/mermify
+home: https://github.com/tra-sco/mermify
 sources:
-  - https://tra-sco/mermify
-icon: https://raw.githubusercontent.com/ConnorsApps/mermify/main/public/favicon.svg
+  - https://github.com/tra-sco/mermify
+icon: https://raw.githubusercontent.com/tra-sco/mermify/main/public/favicon.svg
 keywords:
   - mermaid
   - diagrams
