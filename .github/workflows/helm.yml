@@ -48,10 +48,10 @@ jobs:
   release:
     name: Publish to GHCR
     needs: lint
-    # TODO: drop the workflow_dispatch escape hatch once the OCI publish path
-    # has been manually verified from this branch -- it's here only to let us
-    # test the release job without merging to main.
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    # TEMP: also run on pull_request, to verify the OCI publish path before
+    # merging. Revert to `github.event_name == 'push' && github.ref ==
+    # 'refs/heads/main'` once confirmed.
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
