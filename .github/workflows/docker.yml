@@ -23,10 +23,7 @@ jobs:
       id-token: write     # sign attestations + GHA cache entries via OIDC
     with:
       output: image
-      # TEMP: force-push on this PR too, to verify the GHCR push path before
-      # merging. Revert to `${{ github.event_name != 'pull_request' }}` once
-      # confirmed.
-      push: true
+      push: ${{ github.event_name != 'pull_request' }}
       platforms: linux/amd64,linux/arm64
       meta-images: ghcr.io/connorsapps/mermify
       meta-tags: |

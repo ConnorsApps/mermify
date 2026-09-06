@@ -48,10 +48,7 @@ jobs:
   release:
     name: Publish to GHCR
     needs: lint
-    # TEMP: also run on pull_request, to verify the OCI publish path before
-    # merging. Revert to `github.event_name == 'push' && github.ref ==
-    # 'refs/heads/main'` once confirmed.
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
